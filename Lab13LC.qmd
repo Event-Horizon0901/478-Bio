@@ -1,0 +1,179 @@
+---
+title: "Lab 13LC"
+author: "Lucas Collignon"
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: true
+    theme: darkly
+execute:
+  echo: true
+  freeze: auto
+  warning: false
+  message: false
+---
+
+```{r}
+.libPaths(c("/home/lcollignon_umass_edu/R/x86_64-pc-linux-gnu-library/4.5", "/usr/local/lib/R/site-library", "/usr/local/lib/R/library"))
+```
+
+# Community Composition & Diversity Tutorial – NEON Soil Chemistry
+
+```{r}
+# Load packages
+library(tidyverse)
+library(vegan)
+library(janitor)
+library(ggplot2)
+```
+
+```{r}
+soil <- read_csv("NEON_soilMAGs_soilChem.csv") %>% clean_names()
+
+glimpse(soil)
+```
+```{r}
+soil <- soil %>%
+  separate(genomics_sample_id,
+           into = c("site", "subplot", "layer", "date", "comp"),
+           sep = "-",
+           remove = FALSE,
+           fill = "right")
+```
+## Environmental Profiling
+**Environmental gradients strongly influence microbial community structure. Profiling helps identify which factors may drive differences among sites, explains differences between levels in different environments**
+```{r}
+env_summary <- soil %>%
+  group_by(site) %>%
+  summarise(
+    mean_temp = mean(soil_temp, na.rm = TRUE),
+    mean_moisture = mean(soil_moisture, na.rm = TRUE),
+    mean_water_ph = mean(soil_in_waterp_h, na.rm = TRUE),
+    mean_cacl_ph = mean(soil_in_ca_clp_h, na.rm = TRUE)
+  )
+env_summary
+```
+## By site
+
+```{r}
+env_long <- env_summary %>%
+  pivot_longer(-site, names_to = "variable", values_to = "value")
+
+ggplot(env_long, aes(x = site, y = value, fill = variable)) +
+  geom_col(position = "dodge") +
+  theme_bw() +
+  labs(title = "Environmental Composition Across NEON Sites",
+       x = "Site", y = "Mean Value")
+```
+## Alpha Diversity of Environmental Variables
+
+```{r}
+env_matrix <- soil %>%
+  group_by(site) %>%
+  summarise(
+    temp = mean(soil_temp, na.rm = TRUE),
+    moisture = mean(soil_moisture, na.rm = TRUE),
+    water_ph = mean(soil_in_waterp_h, na.rm = TRUE),
+    cacl_ph = mean(soil_in_ca_clp_h, na.rm = TRUE)
+  ) %>%
+  column_to_rownames("site")
+```
+
+## Shannon index, Simpson Index, richness
+**The shannon index explains the balance between richness and evenness. A high shannon says that all environmental factors had equal contribution, low shannon says one factor has a large influence**
+
+**richness is how many variables are recorded per sample**
+
+**Simpson index is somewhat opposite to Shannon, if there is a low simpson one factor is dominating and the reason for change, opposite for high simpson**
+```{r}
+shannon <- diversity(env_matrix, index = "shannon")
+simpson <- diversity(env_matrix, index = "simpson")
+richness <- specnumber(env_matrix)
+
+alpha_df <- tibble(
+  site = rownames(env_matrix),
+  shannon = shannon,
+  simpson = simpson,
+  richness = richness
+)
+alpha_df
+```
+## Shannon plot
+
+```{r}
+ggplot(alpha_df, aes(x = site, y = shannon)) +
+  geom_col(fill = "steelblue") +
+  theme_bw() +
+  labs(title = "Shannon Diversity of Environmental Variables",
+       x = "Site", y = "Shannon Index")
+```
+## bray curtis
+
+**this is a beta diversity measure. closer to 0 is closer to identical environments, 1 is different environments**
+```{r}
+bc_dist <- vegdist(env_matrix, method = "bray")
+bc_dist
+```
+
+## Principal component analysis
+
+**PCA identifies major gradients in soil chemistry**
+```{r}
+pca <- prcomp(env_matrix, scale. = TRUE)
+
+pca_df <- as.data.frame(pca$x)
+pca_df$site <- rownames(env_matrix)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, label = site)) +
+  geom_point(size = 4, color = "darkblue") +
+  geom_text(vjust = -0.5) +
+  theme_bw() +
+  labs(title = "PCA of Soil Environmental Variables",
+       x = paste0("PC1 (", round(summary(pca)$importance[2,1] * 100, 1), "%)"),
+       y = paste0("PC2 (", round(summary(pca)$importance[2,2] * 100, 1), "%)"))
+```
+
+## Non metric multidimensional scaling
+
+**another form of environmental analysis, closer points mean more similar environments**
+
+```{r}
+# Prepare numeric matrix for NMDS
+env_matrix_samples <- soil %>%
+  select(genomics_sample_id,
+         soil_temp, soil_moisture, soil_in_waterp_h, soil_in_ca_clp_h) %>%
+  drop_na()
+
+env_numeric <- env_matrix_samples %>%
+  select(-genomics_sample_id)
+
+# Run NMDS
+library(vegan)
+set.seed(123)
+nmds <- metaMDS(env_numeric, distance = "bray", k = 2, trymax = 100)
+
+# Extract site scores only
+site_scores <- scores(nmds, display = "sites")
+
+# Convert to dataframe
+nmds_df <- as.data.frame(site_scores)
+
+# Add sample IDs
+nmds_df$sample_id <- env_matrix_samples$genomics_sample_id
+
+# Plot NMDS
+ggplot(nmds_df, aes(x = NMDS1, y = NMDS2, label = sample_id)) +
+  geom_point(size = 4, color = "darkred") +
+  geom_text(vjust = -0.5) +
+  theme_bw() +
+  labs(title = "NMDS of Soil Environmental Variables",
+       x = "NMDS1",
+       y = "NMDS2")
+```
+
+
+
+
+
