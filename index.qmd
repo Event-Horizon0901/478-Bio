@@ -6,6 +6,6 @@ editor: visual
 ---
 
 
-
+[Lab7](Lab7LC.html)
 [Lab13](Lab13LC.html)
 
