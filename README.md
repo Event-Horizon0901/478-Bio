@@ -1,2 +1,2 @@
 # 478-Bio
-## Have mercy on me I am horrible with this downloading and pushing stuff
+## I am horrible with this downloading and pushing stuff, my computer will likely throttle me when robots take the world
